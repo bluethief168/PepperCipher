@@ -112,6 +112,9 @@ async function saveDownload(page, selector, path) {
         return progress && progress.classList.contains('show');
       }, null, { timeout: 3000 });
       const elapsedBefore = await page.locator('#teProgressElapsed').innerText();
+      const immediateEta = await page.locator('#teProgressEta').innerText();
+      assert.match(immediateEta, /预计剩余/,'ETA must be rendered immediately when Argon2 progress starts');
+      assert.doesNotMatch(immediateEta, /--|等待实际进度/,'ETA must not remain a blank placeholder');
       await page.waitForTimeout(220);
       const elapsedAfter = await page.locator('#teProgressElapsed').innerText();
       assert.notEqual(elapsedAfter, elapsedBefore, 'elapsed timer should tick while Argon2id runs');
@@ -148,7 +151,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tdDecrypt').click();
       await waitForResult(page, '#tdResult', 240000);
       assert.equal(await page.locator('#tdPlain').inputValue(), 'PepperCipher browser audit\n中文 Unicode 🔐\nline 3');
-      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, livePercent: liveProgress.percent, liveEta: liveProgress.eta, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
+      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, immediateEta, livePercent: liveProgress.percent, liveEta: liveProgress.eta, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
     });
 
     let noPasswordPacks;
@@ -263,6 +266,10 @@ async function saveDownload(page, selector, path) {
         assert.equal(await page.locator('#prPrint').isDisabled(), false);
         assert.ok(await page.locator('#paperCodes .paper-card').count() >= 1, 'paper pages should be rendered for ' + kind);
       }
+      const safeText = await page.locator('#paperCodes .paper-safe-text').first().innerText();
+      assert.ok(safeText.length > 0, 'paper page must contain printable fallback text');
+      assert.doesNotMatch(safeText, /[ILOU]/, 'paper fallback data must exclude ambiguous I/L/O/U characters');
+      assert.doesNotMatch(safeText, /[ilou]/, 'paper fallback data must be uppercase and ambiguity-free');
       const paperCardCount = await page.locator('#paperCodes .paper-card').count();
       assert.ok(paperCardCount >= 1);
       await page.emulateMedia({media:'print'});
