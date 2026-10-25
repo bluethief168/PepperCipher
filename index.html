@@ -42,7 +42,7 @@
   </header>
 
   <div id="fatal" class="fatal" role="alert"></div>
-  <div class="offline"><span class="dot" aria-hidden="true"></span><div><strong>离线加密 + 本机目录</strong><span>PepperCipher 不包含网络请求功能。密码档案目录只保存名称、分类、备注、Record ID 等索引信息，不保存密码、Secret K 或密文；目录可在本机自动维护，也可导出 JSON 进行电子备份。</span></div></div>
+  <div class="offline"><span class="dot" aria-hidden="true"></span><div><strong>离线加密 + 本机目录</strong><span>PepperCipher 不包含网络请求功能。密码档案目录只保存名称、分类、备注、Record ID 等索引信息，不保存密码、密钥秘密或密文；目录可在本机自动维护，也可导出 JSON 进行电子备份。</span></div></div>
 
   <nav class="tabs" role="tablist" aria-label="主要功能">
     <button class="tab" id="tab-ca" role="tab" aria-selected="true" aria-controls="panel-ca" data-panel="ca">密码目录</button>
@@ -89,7 +89,7 @@
         <div class="field"><label for="catCategory">分类</label><input id="catCategory" type="text" maxlength="80" list="catCategoryList" autocomplete="off" placeholder="例如 银行"><datalist id="catCategoryList"><option value="银行"><option value="信用卡"><option value="投资"><option value="政府"><option value="运营商"><option value="邮箱"><option value="云服务"><option value="社交"><option value="购物"><option value="其他"></datalist></div>
         <div class="field"><label for="catStatus">状态</label><select id="catStatus"><option value="active">Active · 使用中</option><option value="archived">Archived · 已归档</option></select></div>
       </div>
-      <div class="field"><label for="catNote">目录备注 <span class="hint">仅电子目录</span></label><textarea id="catNote" style="min-height:100px" maxlength="1000" placeholder="例如：主账户、旧账户、纸质备份位置提示等。不要在这里保存密码或 Secret K。"></textarea></div>
+      <div class="field"><label for="catNote">目录备注 <span class="hint">仅电子目录</span></label><textarea id="catNote" style="min-height:100px" maxlength="1000" placeholder="例如：主账户、旧账户、纸质备份位置提示等。不要在这里保存密码或密钥秘密。"></textarea></div>
       <div class="actions"><button class="primary" id="catSave" type="button">保存目录项</button><button id="catCancel" type="button">取消编辑</button><button id="catGenerateId" type="button">生成新 Record ID</button></div>
       <div class="statusline" id="catEditStatus"></div>
     </div>
@@ -105,7 +105,7 @@
         <div class="field"><label for="teCatalogName">名称 / 用途 <span class="hint">例如 A银行网上银行</span></label><input id="teCatalogName" type="text" maxlength="160" autocomplete="off" placeholder="用于以后快速查找，不会打印到纸上"></div>
         <div class="field"><label for="teCatalogCategory">分类</label><input id="teCatalogCategory" type="text" maxlength="80" list="catCategoryList" autocomplete="off" placeholder="例如 银行"></div>
       </div>
-      <div class="field"><label for="teCatalogNote">目录备注 <span class="hint">仅电子目录，不要保存密码或 Secret K</span></label><input id="teCatalogNote" type="text" maxlength="1000" autocomplete="off" placeholder="例如 主账户"></div>
+      <div class="field"><label for="teCatalogNote">目录备注 <span class="hint">仅电子目录，不要保存密码或密钥秘密</span></label><input id="teCatalogNote" type="text" maxlength="1000" autocomplete="off" placeholder="例如 主账户"></div>
       <div class="notice" style="margin-bottom:14px">目录自动维护：新建时自动生成唯一 Record ID；更新现有档案时沿用原 Record ID。Record ID 会写入 Ciphertext / Parliaments / Key 用于三包关联，但名称、分类和备注不会写入纸质备份。</div>
       <div class="field"><label for="tePlain">明文 <span class="hint">不会上传</span></label><textarea id="tePlain" spellcheck="false" placeholder="输入要加密的文本…"></textarea></div>
       <div class="grid2">
@@ -142,7 +142,7 @@
 <div class="actions"><button id="teCopyParams" type="button">复制参数包</button><button id="teSaveParams" type="button">保存 Parliaments .txt</button></div>
 <div class="field"><label for="teKey">③ 密钥包（Key）</label><textarea id="teKey" class="paper-secret" readonly spellcheck="false"></textarea></div>
 <div class="actions"><button id="teCopyKey" type="button">复制密钥包</button><button id="teSaveKey" type="button">保存 Key .txt</button><button id="tePaper" type="button">生成纸质备份</button></div>
-<div class="notice" style="margin-top:12px"><strong>三份分离保存：</strong>密文不含 Salt、Nonce、Argon2id 参数或 Secret K。解密需要正确主密码 + 参数包 + 密钥包。建议把三者保存在不同位置。</div>
+<div class="notice" style="margin-top:12px"><strong>三份分离保存：</strong>密文不含 Salt、Nonce、Argon2id 参数或密钥秘密。密码模式解密需要正确主密码 + 参数包 + 密钥包。建议把三者保存在不同位置。</div>
 <details><summary>加密详情</summary><dl class="detailgrid" id="teDetails"></dl></details></div></div>
     </div>
   </section>
@@ -248,7 +248,7 @@
 </div>
 
 <dialog id="selfTestDialog"><div class="dialoghead"><strong>安全自检</strong><button class="small" data-close-dialog="selfTestDialog" type="button">关闭</button></div><div class="dialogbody"><p class="sub">自检只在本机执行，不产生网络请求。</p><div class="actions"><button class="primary" id="runTests" type="button">运行自检</button></div><div class="tests" id="testResults" style="margin-top:14px"></div></div></dialog>
-<dialog id="aboutDialog"><div class="dialoghead"><strong>关于与威胁模型</strong><button class="small" data-close-dialog="aboutDialog" type="button">关闭</button></div><div class="dialogbody"><p><strong>PepperCipher</strong> 用于保护静态密文在被他人获得后的内容机密性与完整性。核心算法为 AES-256-GCM，密码通过 Argon2id 派生；m/t/p 可自定义并随加密对象保存；旧容器仍可用 PBKDF2-HMAC-SHA-256 解密。</p><p>它不能防御已感染恶意软件的设备、键盘记录器、恶意浏览器扩展、屏幕录制、被篡改的本 HTML、弱密码、浏览器漏洞或用户遗失密码。</p><p>文件容器会自描述格式版本、KDF、Argon2id/PBKDF2 参数、Salt、Nonce 策略、Chunk Size 等必要恢复参数。原始文件名、MIME、可选 SHA-256 等放在加密 Metadata 中。</p><p>纸质恢复格式把 Ciphertext / Parliaments / Key 分别分片，每片含对象类型、集合标识、页号与独立校验。标准 QR 解码能力不可用时，Paper PhotoCode 提供内置离线视觉识别备用恢复路径；恢复成功后，密码模式必须同时具备正确密码、参数包和 Secret K，并通过 AES-GCM 认证。纸面只包含机器恢复所需信息，不打印账户名称或用途。</p><p>密码档案目录是独立的本机索引，只保存名称、分类、备注、Record ID、状态和时间，不保存密码、Secret K 或密文。目录可导出为 JSON/CSV；导出文件本身未加密。</p><p>Argon2id 实现包含 RFC KAT、多组 Unicode/并行度/多轮参数测试以及 m/t/p 合法性与有效内存对齐校验。</p><p>大文件核心按 Chunk 处理，但实际最大可处理大小仍受浏览器内存、临时存储和文件保存 API 限制。iOS 等环境缺少增强文件 API 时，会安全降级为 Blob 下载路径，而不会降级加密强度。</p></div></dialog>
+<dialog id="aboutDialog"><div class="dialoghead"><strong>关于与威胁模型</strong><button class="small" data-close-dialog="aboutDialog" type="button">关闭</button></div><div class="dialogbody"><p><strong>PepperCipher</strong> 用于保护静态密文在被他人获得后的内容机密性与完整性。核心算法为 AES-256-GCM，密码通过 Argon2id 派生；m/t/p 可自定义并随加密对象保存；旧容器仍可用 PBKDF2-HMAC-SHA-256 解密。</p><p>它不能防御已感染恶意软件的设备、键盘记录器、恶意浏览器扩展、屏幕录制、被篡改的本 HTML、弱密码、浏览器漏洞或用户遗失密码。</p><p>文件容器会自描述格式版本、KDF、Argon2id/PBKDF2 参数、Salt、Nonce 策略、Chunk Size 等必要恢复参数。原始文件名、MIME、可选 SHA-256 等放在加密 Metadata 中。</p><p>纸质恢复格式把 Ciphertext / Parliaments / Key 分别分片，每片含对象类型、集合标识、页号与独立校验。标准 QR 解码能力不可用时，Paper PhotoCode 提供内置离线视觉识别备用恢复路径；恢复成功后，密码模式必须同时具备正确密码、参数包和密钥包，并通过 AES-GCM 认证。纸面只包含机器恢复所需信息，不打印账户名称或用途。</p><p>密码档案目录是独立的本机索引，只保存名称、分类、备注、Record ID、状态和时间，不保存密码、密钥秘密或密文。目录可导出为 JSON/CSV；导出文件本身未加密。</p><p>Argon2id 实现包含 RFC KAT、多组 Unicode/并行度/多轮参数测试以及 m/t/p 合法性与有效内存对齐校验。</p><p>大文件核心按 Chunk 处理，但实际最大可处理大小仍受浏览器内存、临时存储和文件保存 API 限制。iOS 等环境缺少增强文件 API 时，会安全降级为 Blob 下载路径，而不会降级加密强度。</p></div></dialog>
 <dialog id="helpDialog"><div class="dialoghead"><strong>PepperCipher 使用帮助</strong><button class="small" data-close-dialog="helpDialog" type="button">关闭</button></div><div class="dialogbody"><div id="helpBody"></div><div class="actions"><button class="primary" id="helpDownload" type="button">保存本版帮助文件</button><button id="helpClose" type="button">关闭</button></div></div></dialog>
 <div class="toastzone" id="toastZone" aria-live="polite" aria-atomic="false"></div>
 <script>
