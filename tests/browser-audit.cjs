@@ -1,4 +1,5 @@
 const { chromium } = require('playwright');
+const { PDFDocument } = require('pdf-lib');
 const fs = require('node:fs');
 const assert = require('node:assert/strict');
 
@@ -186,6 +187,25 @@ async function saveDownload(page, selector, path) {
       return { cancelled: true, ciphertextUnchanged: true };
     });
 
+    await test('空主密码会自动切换无密码模式', async () => {
+      await page.locator('#tab-te').click();
+      await page.locator('#teCatalogMode').selectOption('none');
+      await page.locator('#teNoPassword').uncheck();
+      await page.locator('#tePass').fill('');
+      await page.locator('#tePass2').fill('');
+      await page.locator('#tePlain').fill('Auto-switch audit: 空密码不得误走 Argon2');
+      const oldCipher = await page.locator('#teCipher').inputValue();
+      await page.locator('#teEncrypt').click();
+      await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 30000 });
+      const params = await page.locator('#teParams').inputValue();
+      assert.ok(params.startsWith('Parliaments.'));
+      const payload = JSON.parse(Buffer.from(params.slice('Parliaments.'.length), 'base64url').toString('utf8'));
+      assert.equal(payload.kdf, 'RAW-KEY', 'empty password should produce the no-password KDF package');
+      const notices = await page.locator('.toast').allInnerTexts();
+      assert.ok(notices.some(x => x.includes('主密码为空') && x.includes('无密码模式')));
+      return { automaticModeSwitch: true, kdf: payload.kdf };
+    });
+
     await test('目录新增、持久化和 JSON 导出', async () => {
       await page.locator('#tab-ca').click();
       await page.locator('#catNew').click();
@@ -203,7 +223,16 @@ async function saveDownload(page, selector, path) {
         assert.equal(Object.prototype.hasOwnProperty.call(record, 'secret'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(record, 'ciphertext'), false);
       }
-      return { recordCreated: true, exportedRecords: json.records.length, filename: dl.suggestedFilename, secretFieldsFound: false };
+      const now = new Date().toISOString();
+      json.records.push({recordId:'PC-AAAA-BBBB-CCCC-DDDD-EEEE',name:'Imported Audit Account',category:'Import Test',note:'imported through JSON',status:'active',createdAt:now,updatedAt:now});
+      await page.locator('#catImportFile').setInputFiles({name:'peppercipher-audit-import.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(json))});
+      await page.waitForFunction(() => document.querySelector('#catList')?.innerText.includes('Imported Audit Account'), null, {timeout:30000});
+      const csvPath = '/tmp/peppercipher-catalog-audit.csv';
+      const csv = await saveDownload(page, '#catExportCsv', csvPath);
+      const csvText = fs.readFileSync(csvPath, 'utf8');
+      assert.ok(csvText.includes('Name,Category,Note'));
+      assert.ok(csvText.includes('Imported Audit Account'));
+      return { recordCreated: true, jsonImported: true, csvExported: true, exportedRecords: json.records.length, jsonFilename: dl.suggestedFilename, csvFilename: csv.suggestedFilename, secretFieldsFound: false };
     });
 
     await test('三种电子包均可生成纸质备份页', async () => {
@@ -221,7 +250,14 @@ async function saveDownload(page, selector, path) {
         assert.equal(await page.locator('#prPrint').isDisabled(), false);
         assert.ok(await page.locator('#paperCodes .paper-card').count() >= 1, 'paper pages should be rendered for ' + kind);
       }
-      return { packageTypes: sources.map(x => x[0]), rendered: true };
+      const paperCardCount = await page.locator('#paperCodes .paper-card').count();
+      assert.ok(paperCardCount >= 1);
+      await page.emulateMedia({media:'print'});
+      const pdfBytes = await page.pdf({format:'Letter',printBackground:true});
+      const pdfDoc = await PDFDocument.load(pdfBytes);
+      assert.equal(pdfDoc.getPageCount(), paperCardCount, 'print-to-PDF must not add blank pages');
+      await page.emulateMedia({media:'screen'});
+      return { packageTypes: sources.map(x => x[0]), rendered: true, paperCards: paperCardCount, pdfPages: pdfDoc.getPageCount(), blankPages: 0 };
     });
 
     await test('文件加密与解密二进制往返', async () => {
@@ -282,6 +318,22 @@ async function saveDownload(page, selector, path) {
       const restoredDownload = await saveDownload(page, '#fdDownload', restoredPath);
       assert.deepEqual(fs.readFileSync(restoredPath), original);
       return { roundTrip: true, encryptedFilename: encryptedDownload.suggestedFilename, restoredFilename: restoredDownload.suggestedFilename };
+    });
+
+    await test('Argon2id 自定义参数保存并在重新打开后恢复', async () => {
+      await page.locator('#tab-te').click();
+      await page.locator('#teArgonMemory').fill('32768');
+      await page.locator('#teArgonTime').fill('2');
+      await page.locator('#teArgonParallel').fill('2');
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('peppercipher.argon2.v1') || 'null')?.te);
+      assert.equal(String(stored.memoryKiB), '32768');
+      assert.equal(String(stored.timeCost), '2');
+      assert.equal(String(stored.parallelism), '2');
+      await page.reload({waitUntil:'load'});
+      assert.equal(await page.locator('#teArgonMemory').inputValue(), '32768');
+      assert.equal(await page.locator('#teArgonTime').inputValue(), '2');
+      assert.equal(await page.locator('#teArgonParallel').inputValue(), '2');
+      return { persisted: true, memoryKiB: 32768, timeCost: 2, parallelism: 2 };
     });
 
     await test('主题切换与本机离线约束', async () => {
