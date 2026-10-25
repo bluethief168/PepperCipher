@@ -1752,10 +1752,12 @@ function catalogNewRecordId(){
   const groups=raw.match(/.{1,4}/g);return 'PC-'+groups.join('-')
 }
 function catalogCleanText(v,max){return String(v??'').trim().slice(0,max)}
-function catalogNormalizeRecord(r,{allowBlankName=false}={}){
+function catalogNormalizeRecord(r,{allowBlankName=false,allowLegacyId=false}={}){
   if(!r||typeof r!=='object')throw new Error('目录项结构无效。');
   const recordId=String(r.recordId||'').trim().toUpperCase();
-  if(!catalogRecordIdValid(recordId))throw new Error('Record ID 格式无效。');
+  if(!catalogRecordIdValid(recordId)){
+    if(!allowLegacyId||!/^PC-(?:[A-Z0-9]{4}-){4}[A-Z0-9]{4}$/.test(recordId))throw new Error('Record ID 格式无效。');
+  }
   const name=catalogCleanText(r.name,CATALOG_CFG.MAX_NAME),category=catalogCleanText(r.category,CATALOG_CFG.MAX_CATEGORY),note=catalogCleanText(r.note,CATALOG_CFG.MAX_NOTE);
   if(!allowBlankName&&!name)throw new Error('名称 / 用途不能为空。');
   const status=r.status==='archived'?'archived':'active';
@@ -1781,7 +1783,10 @@ async function catalogLoad(){
       catalogState.db=await catalogOpenDB();
       catalogState.backend='indexeddb';
       let rows=await catalogIdbGetAll(catalogState.db);
-      rows=rows.map(x=>catalogNormalizeRecord(x,{allowBlankName:false}));
+      // Existing catalog rows may have been created by older PepperCipher versions
+      // whose Record ID alphabet was broader. Keep those records readable instead
+      // of misclassifying a normalization failure as an IndexedDB failure.
+      rows=rows.map(x=>catalogNormalizeRecord(x,{allowBlankName:false,allowLegacyId:true}));
       if(!rows.length){
         const fallback=catalogLocalRead();
         if(fallback.length){
@@ -2167,7 +2172,7 @@ function splitPostBootstrap(){
 }
 
 // ========================= VERSIONED HELP =========================
-const PEPPERCIPHER_VERSION='2026.10.25.39';
+const PEPPERCIPHER_VERSION='2026.10.25.40';
 function pepperDateCode(d=new Date()){return String(d.getFullYear()).slice(-2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
 function buildHelpHtml(){const v=PEPPERCIPHER_VERSION,date=pepperDateCode();return `<div class="help-doc"><h2>PepperCipher 使用帮助 · 版本 ${v}</h2><p class="sub">本帮助与当前网页程序版本同步生成。PepperCipher 是<strong>离线、本机运行</strong>的文本/文件加密工具；正常加密、解密、自检和纸质恢复均不需要网络。</p>
 <h3>一、第一次使用前必须知道的 6 件事</h3><ol>
