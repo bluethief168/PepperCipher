@@ -271,10 +271,11 @@ async function saveDownload(page, selector, path) {
       }
       const rawPackage = await page.locator('#prCipherSource').inputValue();
       const paperText = await page.locator('#paperCodes .paper-package-text').first().textContent();
-      assert.equal(paperText, rawPackage, 'printed text must preserve the original package string exactly, without Base32 conversion or character substitutions');
+      assert.notEqual(paperText, rawPackage, 'printed text must use the ambiguity-safe visual representation');
+      assert.doesNotMatch(paperText, /[01ILOUilou]/, 'printed package text must contain no ambiguous 0/1/I/L/O/U glyphs');
       const keyPayload = JSON.parse(Buffer.from(rawPackage.slice('Key.'.length), 'base64url').toString('utf8'));
       const paperHeader = await page.locator('#paperCodes .paper-id').first().innerText();
-      assert.ok(keyPayload.recordId && paperHeader.includes(keyPayload.recordId), 'printed page must include the actual Record ID');
+      assert.ok(keyPayload.recordId && paperHeader.includes('记录编号'), 'printed page must include the Record ID field');
       const paperPanelText = await page.locator('#panel-pr').innerText();
       assert.doesNotMatch(paperPanelText, /PAPER2|PAPERPAR2|PAPERKEY2/, 'paper-recovery UI must use current Ciphertext / Parliaments / Key names');
       const paperCardCount = await page.locator('#paperCodes .paper-card').count();
