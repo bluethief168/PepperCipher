@@ -352,8 +352,8 @@ function humanSafeEncode(bytes){
   if(!bytes.length)return '';
   let zeros=0;
   while(zeros<bytes.length&&bytes[zeros]===0)zeros++;
-  let digits=[0];
-  for(let i=0;i<bytes.length;i++){
+  let digits=[];
+  for(let i=zeros;i<bytes.length;i++){
     let carry=bytes[i];
     for(let j=0;j<digits.length;j++){
       const v=digits[j]*256+carry;
@@ -364,6 +364,7 @@ function humanSafeEncode(bytes){
   }
   let out='';
   for(let i=0;i<zeros;i++)out+=HUMAN_SAFE_ALPHABET[0];
+  if(!digits.length)return out||HUMAN_SAFE_ALPHABET[0];
   for(let i=digits.length-1;i>=0;i--)out+=HUMAN_SAFE_ALPHABET[digits[i]];
   return out;
 }
@@ -373,7 +374,7 @@ function humanSafeDecode(s){
   for(const ch of s)if(HUMAN_SAFE_INDEX[ch]===undefined)throw new InvalidContainerError('安全字符编码无效。');
   let leading=0;
   while(leading<s.length&&s[leading]===HUMAN_SAFE_ALPHABET[0])leading++;
-  let bytes=[0];
+  let bytes=[];
   for(let i=leading;i<s.length;i++){
     let carry=HUMAN_SAFE_INDEX[s[i]];
     for(let j=0;j<bytes.length;j++){
