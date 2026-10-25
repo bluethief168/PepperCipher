@@ -1,0 +1,254 @@
+const { chromium } = require('playwright');
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+
+const BASE_URL = process.env.PEPPERCIPHER_URL || 'http://127.0.0.1:4173/index.html';
+const report = { url: BASE_URL, startedAt: new Date().toISOString(), tests: [], pageErrors: [], consoleErrors: [], externalRequests: [] };
+let browser;
+
+async function test(name, fn) {
+  const started = Date.now();
+  try {
+    const details = await fn();
+    report.tests.push({ name, passed: true, durationMs: Date.now() - started, details: details || null });
+    console.log('PASS ' + name + (details ? ' — ' + JSON.stringify(details) : ''));
+  } catch (error) {
+    report.tests.push({ name, passed: false, durationMs: Date.now() - started, error: String(error && error.stack || error) });
+    console.error('FAIL ' + name + '\n' + (error && error.stack || error));
+    throw error;
+  }
+}
+
+async function waitForResult(page, selector, timeout = 120000) {
+  await page.waitForFunction(sel => {
+    const el = document.querySelector(sel);
+    return el && el.classList.contains('show');
+  }, selector, { timeout });
+}
+
+async function saveDownload(page, selector, path) {
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30000 }),
+    page.locator(selector).click()
+  ]);
+  await download.saveAs(path);
+  return { suggestedFilename: download.suggestedFilename(), path };
+}
+
+(async () => {
+  try {
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+    const context = await browser.newContext({ acceptDownloads: true, viewport: { width: 1440, height: 1000 } });
+    const page = await context.newPage();
+    page.setDefaultTimeout(15000);
+    page.on('pageerror', error => report.pageErrors.push(String(error && error.stack || error)));
+    page.on('console', msg => { if (msg.type() === 'error') report.consoleErrors.push(msg.text()); });
+    page.on('request', req => {
+      const url = req.url();
+      if (!url.startsWith('http://127.0.0.1:4173/') && !url.startsWith('http://localhost:4173/')) report.externalRequests.push(url);
+    });
+
+    await page.goto(BASE_URL, { waitUntil: 'load' });
+    await page.waitForSelector('#app');
+    assert.equal(await page.locator('#fatal.show').count(), 0, 'application must not enter fatal state');
+
+    await test('页面启动与六个主标签', async () => {
+      const tabs = ['ca', 'te', 'td', 'fe', 'fd', 'pr'];
+      for (const tab of tabs) {
+        await page.locator('#tab-' + tab).click();
+        assert.equal(await page.locator('#tab-' + tab).getAttribute('aria-selected'), 'true', 'tab ' + tab);
+        assert.equal(await page.locator('#panel-' + tab).evaluate(el => el.classList.contains('active')), true, 'panel ' + tab);
+      }
+      return { tabsChecked: tabs.length, fatalBanner: false };
+    });
+
+    await test('帮助版本同步且不包含已移除的校准操作', async () => {
+      await page.locator('#helpBtn').click();
+      const help = await page.locator('#helpBody').innerText();
+      assert.match(help, /2026\.10\.25\.16/);
+      assert.doesNotMatch(help, /校准当前 m \/ p/);
+      await page.locator('#helpClose').click();
+      return { helpVersion: '2026.10.25.16', staleCalibrationText: false };
+    });
+
+    await test('内置加密与格式安全自检', async () => {
+      await page.locator('#selfTestBtn').click();
+      await page.locator('#runTests').click();
+      await page.waitForFunction(() => {
+        const toast = [...document.querySelectorAll('.toast')].map(x => x.textContent || '').join(' ');
+        return toast.includes('自检完成');
+      }, null, { timeout: 900000 });
+      const rows = await page.locator('#testResults .testrow').evaluateAll(els => els.map(el => ({
+        name: el.querySelector('span')?.textContent || '',
+        passed: !!el.querySelector('strong.ok'),
+        result: el.querySelector('strong')?.textContent || ''
+      })));
+      assert.ok(rows.length >= 22, 'expected the full built-in suite including the clock regression test; got ' + rows.length);
+      const failed = rows.filter(x => !x.passed);
+      assert.deepEqual(failed, [], 'self-tests must all pass');
+      await page.locator('#selfTestDialog [data-close-dialog="selfTestDialog"]').first().click().catch(() => {});
+      return { selfTestsPassed: rows.length, failed: 0 };
+    });
+
+    await test('文本加密进度及时刷新且密码模式往返成功', async () => {
+      await page.locator('#tab-te').click();
+      await page.locator('#teCatalogMode').selectOption('none');
+      await page.locator('#tePlain').fill('PepperCipher browser audit\n中文 Unicode 🔐\nline 3');
+      await page.locator('#tePass').fill('Audit-Pepper-Password-2026!');
+      await page.locator('#tePass2').fill('Audit-Pepper-Password-2026!');
+      await page.locator('#teArgonMemory').fill('16384');
+      await page.locator('#teArgonTime').fill('1');
+      await page.locator('#teArgonParallel').fill('1');
+      await page.locator('#teEncrypt').click();
+      await page.waitForFunction(() => {
+        const progress = document.querySelector('#teProgress');
+        return progress && progress.classList.contains('show');
+      }, null, { timeout: 3000 });
+      const elapsedBefore = await page.locator('#teProgressElapsed').innerText();
+      await page.waitForTimeout(220);
+      const elapsedAfter = await page.locator('#teProgressElapsed').innerText();
+      assert.notEqual(elapsedAfter, elapsedBefore, 'elapsed timer should tick while Argon2id runs');
+      await waitForResult(page, '#teResult', 240000);
+      const packs = await page.evaluate(() => ({
+        cipher: document.querySelector('#teCipher').value,
+        params: document.querySelector('#teParams').value,
+        key: document.querySelector('#teKey').value,
+        generationTime: document.querySelector('#teGenerationTime strong').textContent
+      }));
+      assert.ok(packs.cipher.startsWith('Ciphertext.'));
+      assert.ok(packs.params.startsWith('Parliaments.'));
+      assert.ok(packs.key.startsWith('Key.'));
+      assert.notEqual(packs.generationTime, '--');
+      await page.locator('#tab-td').click();
+      await page.locator('#tdCipher').fill(packs.cipher);
+      await page.locator('#tdParams').fill(packs.params);
+      await page.locator('#tdKey').fill(packs.key);
+      await page.locator('#tdPass').fill('Audit-Pepper-Password-2026!');
+      await page.locator('#tdDecrypt').click();
+      await waitForResult(page, '#tdResult', 240000);
+      assert.equal(await page.locator('#tdPlain').inputValue(), 'PepperCipher browser audit\n中文 Unicode 🔐\nline 3');
+      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
+    });
+
+    let noPasswordPacks;
+    await test('无密码模式文本加密与解密往返', async () => {
+      await page.locator('#tab-te').click();
+      await page.locator('#teCatalogMode').selectOption('none');
+      await page.locator('#tePlain').fill('No-password mode audit: 不等于无密钥');
+      await page.locator('#tePass').fill('');
+      await page.locator('#tePass2').fill('');
+      await page.locator('#teNoPassword').check();
+      await page.locator('#teEncrypt').click();
+      await waitForResult(page, '#teResult', 30000);
+      noPasswordPacks = await page.evaluate(() => ({
+        cipher: document.querySelector('#teCipher').value,
+        params: document.querySelector('#teParams').value,
+        key: document.querySelector('#teKey').value
+      }));
+      await page.locator('#tab-td').click();
+      await page.locator('#tdCipher').fill(noPasswordPacks.cipher);
+      await page.locator('#tdParams').fill(noPasswordPacks.params);
+      await page.locator('#tdKey').fill(noPasswordPacks.key);
+      await page.locator('#tdPass').fill('');
+      await page.locator('#tdDecrypt').click();
+      await waitForResult(page, '#tdResult', 30000);
+      assert.equal(await page.locator('#tdPlain').inputValue(), 'No-password mode audit: 不等于无密钥');
+      return { roundTrip: true };
+    });
+
+    await test('目录新增、持久化和 JSON 导出', async () => {
+      await page.locator('#tab-ca').click();
+      await page.locator('#catNew').click();
+      await page.locator('#catName').fill('Browser Audit Account');
+      await page.locator('#catCategory').fill('Automated Test');
+      await page.locator('#catNote').fill('test-only metadata; no secrets');
+      await page.locator('#catSave').click();
+      await page.waitForFunction(() => document.querySelector('#catList')?.innerText.includes('Browser Audit Account'), null, { timeout: 30000 });
+      const dlPath = '/tmp/peppercipher-catalog-audit.json';
+      const dl = await saveDownload(page, '#catExportJson', dlPath);
+      const json = JSON.parse(fs.readFileSync(dlPath, 'utf8'));
+      assert.ok(json.records.some(r => r.name === 'Browser Audit Account'));
+      for (const record of json.records) {
+        assert.equal(Object.prototype.hasOwnProperty.call(record, 'password'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(record, 'secret'), false);
+        assert.equal(Object.prototype.hasOwnProperty.call(record, 'ciphertext'), false);
+      }
+      return { recordCreated: true, exportedRecords: json.records.length, filename: dl.suggestedFilename, secretFieldsFound: false };
+    });
+
+    await test('三种电子包均可生成纸质备份页', async () => {
+      const sources = [
+        ['cipher', noPasswordPacks.cipher],
+        ['params', noPasswordPacks.params],
+        ['key', noPasswordPacks.key]
+      ];
+      for (const [kind, value] of sources) {
+        await page.locator('#tab-pr').click();
+        await page.locator('#prPackageType').selectOption(kind);
+        await page.locator('#prCipherSource').fill(value);
+        await page.locator('#prGenerate').click();
+        await page.waitForFunction(() => document.querySelector('#prGenStatus')?.innerText.includes('已生成'), null, { timeout: 60000 });
+        assert.equal(await page.locator('#prPrint').isDisabled(), false);
+        assert.ok(await page.locator('#paperCodes .paper-card').count() >= 1, 'paper pages should be rendered for ' + kind);
+      }
+      return { packageTypes: sources.map(x => x[0]), rendered: true };
+    });
+
+    await test('文件加密与解密二进制往返', async () => {
+      const original = Buffer.from('PepperCipher file audit\n\u0000binary-ish\n中文 🌶️', 'utf8');
+      await page.locator('#tab-fe').click();
+      await page.locator('#feAllTypes').check();
+      await page.locator('#feFile').setInputFiles({ name: 'audit-fixture.txt', mimeType: 'text/plain', buffer: original });
+      await page.locator('#fePass').fill('File-Audit-Password-2026!');
+      await page.locator('#fePass2').fill('File-Audit-Password-2026!');
+      await page.locator('#feArgonMemory').fill('8');
+      await page.locator('#feArgonTime').fill('1');
+      await page.locator('#feArgonParallel').fill('1');
+      await page.locator('#feEncrypt').click();
+      await waitForResult(page, '#feResult', 120000);
+      const encryptedPath = '/tmp/peppercipher-audit.paper';
+      const encryptedDownload = await saveDownload(page, '#feDownload', encryptedPath);
+      const encryptedBytes = fs.readFileSync(encryptedPath);
+      assert.ok(encryptedBytes.length > original.length, 'encrypted file should contain authenticated header and ciphertext');
+
+      await page.locator('#tab-fd').click();
+      await page.locator('#fdFile').setInputFiles({ name: 'audit-fixture.paper', mimeType: 'application/octet-stream', buffer: encryptedBytes });
+      await page.waitForTimeout(250);
+      await page.locator('#fdPass').fill('File-Audit-Password-2026!');
+      await page.locator('#fdDecrypt').click();
+      await waitForResult(page, '#fdResult', 120000);
+      const restoredPath = '/tmp/peppercipher-restored.bin';
+      const restoredDownload = await saveDownload(page, '#fdDownload', restoredPath);
+      const restoredBytes = fs.readFileSync(restoredPath);
+      assert.deepEqual(restoredBytes, original, 'decrypted file bytes must exactly match the original');
+      return { originalBytes: original.length, encryptedBytes: encryptedBytes.length, restoredBytes: restoredBytes.length, encryptedFilename: encryptedDownload.suggestedFilename, restoredFilename: restoredDownload.suggestedFilename };
+    });
+
+    await test('主题切换与本机离线约束', async () => {
+      await page.locator('#themeBtn').click();
+      const theme = await page.locator(':root').getAttribute('data-theme');
+      assert.ok(theme === 'dark' || theme === 'light' || theme === null);
+      assert.deepEqual(report.externalRequests, [], 'the page must not request external network resources');
+      return { themeAttribute: theme, externalRequests: 0 };
+    });
+
+    assert.deepEqual(report.pageErrors, [], 'uncaught page errors must be absent');
+    assert.deepEqual(report.externalRequests, [], 'no external requests should be made');
+  } catch (error) {
+    report.failed = true;
+    report.topLevelError = String(error && error.stack || error);
+  } finally {
+    report.finishedAt = new Date().toISOString();
+    report.summary = {
+      passed: report.tests.filter(t => t.passed).length,
+      failed: report.tests.filter(t => !t.passed).length,
+      pageErrors: report.pageErrors.length,
+      consoleErrors: report.consoleErrors.length,
+      externalRequests: report.externalRequests.length
+    };
+    fs.writeFileSync('audit-report.json', JSON.stringify(report, null, 2));
+    if (browser) await browser.close().catch(() => {});
+    console.log('AUDIT SUMMARY ' + JSON.stringify(report.summary));
+    if (report.failed || report.summary.failed || report.summary.pageErrors || report.summary.externalRequests) process.exitCode = 1;
+  }
+})();
