@@ -99,6 +99,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#teArgonMemory').fill('16384');
       await page.locator('#teArgonTime').fill('1');
       await page.locator('#teArgonParallel').fill('1');
+      const oldCipher = await page.locator('#teCipher').inputValue();
       await page.locator('#teEncrypt').click();
       await page.waitForFunction(() => {
         const progress = document.querySelector('#teProgress');
@@ -108,6 +109,7 @@ async function saveDownload(page, selector, path) {
       await page.waitForTimeout(220);
       const elapsedAfter = await page.locator('#teProgressElapsed').innerText();
       assert.notEqual(elapsedAfter, elapsedBefore, 'elapsed timer should tick while Argon2id runs');
+      await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 240000 });
       await waitForResult(page, '#teResult', 240000);
       const packs = await page.evaluate(() => ({
         cipher: document.querySelector('#teCipher').value,
@@ -138,8 +140,9 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tePass').fill('');
       await page.locator('#tePass2').fill('');
       await page.locator('#teNoPassword').check();
+      const oldCipher = await page.locator('#teCipher').inputValue();
       await page.locator('#teEncrypt').click();
-      await waitForResult(page, '#teResult', 30000);
+      await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 30000 });
       noPasswordPacks = await page.evaluate(() => ({
         cipher: document.querySelector('#teCipher').value,
         params: document.querySelector('#teParams').value,
@@ -151,7 +154,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tdKey').fill(noPasswordPacks.key);
       await page.locator('#tdPass').fill('');
       await page.locator('#tdDecrypt').click();
-      await waitForResult(page, '#tdResult', 30000);
+      await page.waitForFunction(expected => document.querySelector('#tdPlain')?.value===expected, 'No-password mode audit: 不等于无密钥', { timeout: 30000 });
       assert.equal(await page.locator('#tdPlain').inputValue(), 'No-password mode audit: 不等于无密钥');
       return { roundTrip: true };
     });
@@ -187,7 +190,7 @@ async function saveDownload(page, selector, path) {
         await page.locator('#prPackageType').selectOption(kind);
         await page.locator('#prCipherSource').fill(value);
         await page.locator('#prGenerate').click();
-        await page.waitForFunction(() => document.querySelector('#prGenStatus')?.innerText.includes('已生成'), null, { timeout: 60000 });
+        await page.waitForFunction(kind => document.querySelector('#prGenStatus')?.innerText.includes('对象：' + kind), kind, { timeout: 60000 });
         assert.equal(await page.locator('#prPrint').isDisabled(), false);
         assert.ok(await page.locator('#paperCodes .paper-card').count() >= 1, 'paper pages should be rendered for ' + kind);
       }
