@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: peppercipher-audit-${{ github.ref }}
@@ -61,24 +61,3 @@ jobs:
           path: audit-report.json
           if-no-files-found: warn
           retention-days: 30
- 
-      - name: Publish audit report to repository
-        if: always() && github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if [ ! -f audit-report.json ]; then
-            echo "No audit report was generated; see the step logs."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add audit-report.json
-          if git diff --cached --quiet; then
-            echo "Audit report has not changed."
-            exit 0
-          fi
-          git commit -m "Record latest PepperCipher browser audit report"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main || echo "Could not push the audit report; it remains available as a workflow artifact."
