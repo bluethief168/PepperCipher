@@ -108,7 +108,7 @@
       <div class="notice" style="margin-bottom:14px">目录自动维护：新建时自动生成唯一 Record ID；更新现有档案时沿用原 Record ID。Record ID 会写入 PAPER2 / PAPERPAR2 / PAPERKEY2 用于三包关联，但名称、分类和备注不会写入纸质备份。</div>
       <div class="field"><label for="tePlain">明文 <span class="hint">不会上传</span></label><textarea id="tePlain" spellcheck="false" placeholder="输入要加密的文本…"></textarea></div>
       <div class="grid2">
-        <div class="field"><label for="tePass">主密码 <span class="hint" id="teCaps"></span></label><div class="inputwrap"><input id="tePass" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button class="eye" type="button" data-toggle-pass="tePass">显示</button></div><div class="strength"><span id="teStrengthBar"></span></div><div class="statusline" id="teStrengthText">建议至少 12–16 个字符或更长密码短语。</div></div>
+        <div class="field"><label for="tePass">主密码 <span class="hint" id="teCaps"></span></label><div class="inputwrap"><input id="tePass" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button class="eye" type="button" data-toggle-pass="tePass">显示</button></div><div class="strength"><span id="teStrengthBar"></span></div><div class="statusline" id="teStrengthText">允许从 1 个 Unicode 字符开始；为提高安全性，建议使用较长的密码短语。</div></div>
         <div class="field"><label for="tePass2">确认密码</label><div class="inputwrap"><input id="tePass2" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button class="eye" type="button" data-toggle-pass="tePass2">显示</button></div><div class="statusline" id="teMatch"></div></div>
       </div>
       <label class="check" style="margin-top:8px"><input id="teNoPassword" type="checkbox">仅 Secret Key 模式：不使用主密码，PAPERKEY2 即为唯一解密秘密</label>
@@ -131,7 +131,7 @@
       </div>
       <div class="row"><button class="small" type="button" data-generate="te">生成 24 位随机密码</button></div>
       <div class="actions"><button class="primary" id="teEncrypt" type="button">加密文本</button><button id="teClear" type="button">清空</button></div>
-      <div class="progressbox" id="teProgress" aria-live="polite"><div class="progresshead"><span id="teStage">正在处理</span><strong id="tePct">0.00%</strong></div><div class="bar" id="teProgressTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="teProgressBar"></span></div><div class="progressdetail"><span id="teProgressEta">预计剩余：等待实际进度</span><span aria-hidden="true"> · </span><span id="teProgressElapsed">已流逝 0 秒</span></div><div class="progressdetail">Argon2id 进度按内部 slice 回报；预计时间来自本次实际计算速率，不使用固定假设。</div></div>
+      <div class="progressbox" id="teProgress" aria-live="polite"><div class="progresshead"><span id="teStage">正在处理</span><strong id="tePct">0.00%</strong></div><div class="bar" id="teProgressTrack" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="teProgressBar"></span></div><div class="progressdetail"><span id="teProgressEta">预计剩余：等待实际进度</span><span aria-hidden="true"> · </span><span id="teProgressElapsed">已流逝 0 秒</span></div><div class="progressdetail">Argon2id 进度按实际 0–100% 派生进度回报；预计剩余时间来自本次实际计算速率，不使用固定假设。</div></div>
       <div class="result" id="teResult"><div class="resultbox">
 <div class="notice" id="teCatalogResult" style="margin-bottom:12px"></div>
 <div class="generation-time" id="teGenerationTime" aria-live="polite"><span>实际生成时间</span><strong>--</strong></div>
@@ -192,8 +192,8 @@
   </section>
 
   <section class="panel" id="panel-fd" role="tabpanel" aria-labelledby="tab-fd">
-    <div class="card"><h2>文件解密</h2><p class="sub">只接受通过 Magic、版本、长度和算法白名单验证的 PepperCipher v1 容器。</p>
-      <div class="drop" id="fdDrop"><input id="fdFile" type="file" accept=".paper,application/octet-stream" hidden><button id="fdChoose" type="button">选择 .paper 文件（兼容旧版容器）</button><p>或将单个加密文件拖到这里</p><div id="fdMeta"></div></div>
+    <div class="card"><h2>文件解密</h2><p class="sub">接受通过 Magic、版本、长度和算法白名单验证的 PepperCipher v1 / v2 容器；v1 保持向后兼容，v2 支持完整 32-bit Argon2id m/t/p。</p>
+      <div class="drop" id="fdDrop"><input id="fdFile" type="file" accept=".paper,application/octet-stream" hidden><button id="fdChoose" type="button">选择 .paper 文件（兼容 v1 / v2 容器）</button><p>或将单个加密文件拖到这里</p><div id="fdMeta"></div></div>
       <div class="field" style="margin-top:16px"><label for="fdPass">主密码 <span class="hint" id="fdCaps"></span></label><div class="inputwrap"><input id="fdPass" type="password" autocomplete="off" autocapitalize="none" spellcheck="false"><button class="eye" type="button" data-toggle-pass="fdPass">显示</button></div></div>
       <div class="field"><label>输出策略</label><label class="check"><input id="fdForceStream" type="checkbox">支持时优先直接流式写入磁盘（大文件推荐）</label></div>
       <div class="actions"><button class="primary" id="fdDecrypt" type="button">解密文件</button><button id="fdInspect" type="button">读取并复制参数</button><button id="opCancel2" type="button" disabled>取消</button><button id="fdClear" type="button">清空</button></div>
