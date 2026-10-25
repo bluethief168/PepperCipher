@@ -1878,15 +1878,74 @@ function textHandleProgressVisibilityChange(prefix){if(!state.busy||!textProgres
 function updateArgon2Progress(prefix,pass,slice){if(!state.busy)return;checkCancelled(state.currentOp);const box=$(prefix+'Progress');if(!box||!textProgressModel.startedAt)return;textAcceptCoreProgress(prefix,pass,slice);const stage=$(prefix+'Stage');if(stage)stage.textContent='正在计算 Argon2id…'}
 async function splitArgon2id(passwordBytes,salt,{memoryKiB,timeCost,parallelism,key,onProgress}={}){
   const m=Number(memoryKiB),t=Number(timeCost),p=Number(parallelism),secret=key instanceof Uint8Array?key:new Uint8Array(0);
-  validateSplitArgon2Params(m,t,p);if(!passwordBytes.length||salt.length<8)throw new InvalidContainerError('Argon2id 输入无效：密码不能为空，Salt 至少 8 Bytes。');
+  validateSplitArgon2Params(m,t,p);
+  if(!passwordBytes.length||salt.length<8)throw new InvalidContainerError('Argon2id 输入无效：密码不能为空，Salt 至少 8 Bytes。');
   const type=2,version=0x13,dkLen=32,pers=new Uint8Array(0);
-  const h0in=splitConcat(splitLe32(p),splitLe32(dkLen),splitLe32(m),splitLe32(t),splitLe32(version),splitLe32(type),splitLe32(passwordBytes.length),passwordBytes,splitLe32(salt.length),salt,splitLe32(secret.length),secret,splitLe32(pers.length),pers);
-  const H0=splitBlake2b(h0in,64);wipe(h0in);
-  const mP=4*p*Math.floor(m/(4*p)),laneLen=mP/p,segLen=laneLen/4,B=new Uint32Array(mP*256),hbuf=new Uint8Array(72);hbuf.set(H0);wipe(H0);
-  for(let l=0;l<p;l++){hbuf.set(splitLe32(0),64);hbuf.set(splitLe32(l),68);B.set(splitBytesToWordsLE(splitHPrime(hbuf,1024)),l*laneLen*256);hbuf.set(splitLe32(1),64);B.set(splitBytesToWordsLE(splitHPrime(hbuf,1024)),l*laneLen*256+256)}wipe(hbuf);
-  const address=new Uint32Array(768);address[262]=mP;address[264]=t;address[266]=type;let done=0,total=t*4*p*segLen-2*p;
-  for(let r=0;r<t;r++){const needXor=r!==0;address[256]=r;for(let s=0;s<4;s++){address[260]=s;const dataIndependent=type===1||(type===2&&r===0&&s<2);for(let l=0;l<p;l++){address[258]=l;address[268]=0;let start=0;if(r===0&&s===0){start=2;if(dataIndependent){address[268]++;splitA2Block(address,256,512,0,false);splitA2Block(address,0,512,0,false)}}let offset=l*laneLen+s*segLen+start;let prev=offset%laneLen?offset-1:offset+laneLen-1;for(let index=start;index<segLen;index++,offset++,prev++){if(offset%laneLen)prev=offset-1;let randL,randH;if(dataIndependent){const i128=index%128;if(i128===0){address[268]++;splitA2Block(address,256,512,0,false);splitA2Block(address,0,512,0,false)}randL=address[2*i128];randH=address[2*i128+1]}else{randL=B[256*prev];randH=B[256*prev+1]}const refLane=(r===0&&s===0)?l:randH%p,refPos=splitIndexAlpha(r,s,laneLen,segLen,index,randL,refLane===l);splitA2Block(B,256*prev,256*(refLane*laneLen+refPos),offset*256,needXor);done++;if(done%128===0)await new Promise(res=>setTimeout(res,0))}}if(onProgress)onProgress(r,s+1)}}
-  address.fill(0);const C=new Uint32Array(256);for(let l=0;l<p;l++){const last=256*(laneLen*l+laneLen-1);for(let j=0;j<256;j++)C[j]^=B[last+j]}wipe(B);const result=splitHPrime(splitWordsToBytesLE(C),dkLen);wipe(C);return result;
+  let h0in=null,H0=null,hbuf=null,B=null,address=null,C=null,cBytes=null;
+  try{
+    h0in=splitConcat(splitLe32(p),splitLe32(dkLen),splitLe32(m),splitLe32(t),splitLe32(version),splitLe32(type),splitLe32(passwordBytes.length),passwordBytes,splitLe32(salt.length),salt,splitLe32(secret.length),secret,splitLe32(pers.length),pers);
+    H0=splitBlake2b(h0in,64);wipe(h0in);h0in=null;
+    const mP=4*p*Math.floor(m/(4*p)),laneLen=mP/p,segLen=laneLen/4;
+    B=new Uint32Array(mP*256);hbuf=new Uint8Array(72);hbuf.set(H0);wipe(H0);H0=null;
+    for(let l=0;l<p;l++){
+      hbuf.set(splitLe32(0),64);hbuf.set(splitLe32(l),68);
+      B.set(splitBytesToWordsLE(splitHPrime(hbuf,1024)),l*laneLen*256);
+      hbuf.set(splitLe32(1),64);
+      B.set(splitBytesToWordsLE(splitHPrime(hbuf,1024)),l*laneLen*256+256);
+    }
+    wipe(hbuf);hbuf=null;
+    address=new Uint32Array(768);address[262]=mP;address[264]=t;address[266]=type;
+    let done=0,total=t*4*p*segLen-2*p;
+    for(let r=0;r<t;r++){
+      const needXor=r!==0;address[256]=r;
+      for(let s=0;s<4;s++){
+        address[260]=s;
+        const dataIndependent=type===1||(type===2&&r===0&&s<2);
+        for(let l=0;l<p;l++){
+          address[258]=l;address[268]=0;
+          let start=0;
+          if(r===0&&s===0){
+            start=2;
+            if(dataIndependent){address[268]++;splitA2Block(address,256,512,0,false);splitA2Block(address,0,512,0,false)}
+          }
+          let offset=l*laneLen+s*segLen+start;
+          let prev=offset%laneLen?offset-1:offset+laneLen-1;
+          for(let index=start;index<segLen;index++,offset++,prev++){
+            if(offset%laneLen)prev=offset-1;
+            let randL,randH;
+            if(dataIndependent){
+              const i128=index%128;
+              if(i128===0){address[268]++;splitA2Block(address,256,512,0,false);splitA2Block(address,0,512,0,false)}
+              randL=address[2*i128];randH=address[2*i128+1];
+            }else{randL=B[256*prev];randH=B[256*prev+1]}
+            const refLane=(r===0&&s===0)?l:randH%p,refPos=splitIndexAlpha(r,s,laneLen,segLen,index,randL,refLane===l);
+            splitA2Block(B,256*prev,256*(refLane*laneLen+refPos),offset*256,needXor);
+            done++;
+            if(done%128===0)await new Promise(res=>setTimeout(res,0));
+          }
+        }
+        if(onProgress)onProgress(r,s+1);
+      }
+    }
+    address.fill(0);address=null;
+    C=new Uint32Array(256);
+    for(let l=0;l<p;l++){
+      const last=256*(laneLen*l+laneLen-1);
+      for(let j=0;j<256;j++)C[j]^=B[last+j];
+    }
+    cBytes=splitWordsToBytesLE(C);
+    const result=splitHPrime(cBytes,dkLen);
+    return result;
+  }finally{
+    if(h0in)wipe(h0in);
+    if(H0)wipe(H0);
+    if(hbuf)wipe(hbuf);
+    if(address)wipe(address);
+    if(C)wipe(C);
+    if(cBytes)wipe(cBytes);
+    if(B)wipe(B);
+    wipe(SPLIT_A2_BUF);
+  }
 }
 async function splitArgon2Raw(passwordBytes,salt,params,keyBytes){return splitArgon2id(passwordBytes,salt,{memoryKiB:params.memoryKiB,timeCost:params.timeCost,parallelism:params.parallelism,key:keyBytes,onProgress:params.onProgress})}
 async function pcArgon2Raw(passwordBytes,salt,params){return splitArgon2Raw(passwordBytes,salt,params,new Uint8Array(0))}
@@ -2028,7 +2087,7 @@ function splitPostBootstrap(){
 }
 
 // ========================= VERSIONED HELP =========================
-const PEPPERCIPHER_VERSION='2026.10.25.17';
+const PEPPERCIPHER_VERSION='2026.10.25.18';
 function pepperDateCode(d=new Date()){return String(d.getFullYear()).slice(-2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
 function buildHelpHtml(){const v=PEPPERCIPHER_VERSION,date=pepperDateCode();return `<div class="help-doc"><h2>PepperCipher 使用帮助 · 版本 ${v}</h2><p class="sub">本帮助与当前网页程序版本同步生成。PepperCipher 是<strong>离线、本机运行</strong>的文本/文件加密工具；正常加密、解密、自检和纸质恢复均不需要网络。</p>
 <h3>一、第一次使用前必须知道的 6 件事</h3><ol>
