@@ -103,7 +103,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tePass').fill('Audit-Pepper-Password-2026!');
       await page.locator('#tePass2').fill('Audit-Pepper-Password-2026!');
       await page.locator('#teArgonMemory').fill('16384');
-      await page.locator('#teArgonTime').fill('1');
+      await page.locator('#teArgonTime').fill('2');
       await page.locator('#teArgonParallel').fill('1');
       const oldCipher = await page.locator('#teCipher').inputValue();
       await page.locator('#teEncrypt').click();
@@ -115,6 +115,19 @@ async function saveDownload(page, selector, path) {
       await page.waitForTimeout(220);
       const elapsedAfter = await page.locator('#teProgressElapsed').innerText();
       assert.notEqual(elapsedAfter, elapsedBefore, 'elapsed timer should tick while Argon2id runs');
+      await page.waitForFunction(() => {
+        const box = document.querySelector('#teProgress');
+        const pct = Number.parseFloat(document.querySelector('#tePct')?.textContent || '0');
+        const eta = document.querySelector('#teProgressEta')?.textContent || '';
+        return !!box?.classList.contains('show') && pct > 0 && pct < 100 && !eta.includes('正在准备') && !eta.includes('正在建立实际速率');
+      }, null, { timeout: 120000 });
+      const liveProgress = await page.evaluate(() => ({
+        percent: document.querySelector('#tePct')?.textContent || '',
+        eta: document.querySelector('#teProgressEta')?.textContent || '',
+        elapsed: document.querySelector('#teProgressElapsed')?.textContent || ''
+      }));
+      assert.ok(Number.parseFloat(liveProgress.percent) > 0 && Number.parseFloat(liveProgress.percent) < 100);
+      assert.ok(liveProgress.eta && !liveProgress.eta.includes('正在建立实际速率'));
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 240000 });
       await waitForResult(page, '#teResult', 240000);
       const packs = await page.evaluate(() => ({
@@ -135,7 +148,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tdDecrypt').click();
       await waitForResult(page, '#tdResult', 240000);
       assert.equal(await page.locator('#tdPlain').inputValue(), 'PepperCipher browser audit\n中文 Unicode 🔐\nline 3');
-      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
+      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, livePercent: liveProgress.percent, liveEta: liveProgress.eta, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
     });
 
     let noPasswordPacks;
