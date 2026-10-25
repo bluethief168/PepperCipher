@@ -1695,7 +1695,7 @@ function pcSyncDecrypt(prefix,h){const no=h&&(h.kdf==='RANDOM-KEY'||h.kdfId===0)
 // It contains only human-facing metadata and Record IDs. No password, Secret K,
 // ciphertext, Salt, Nonce or KDF secret is stored here.
 function catalogNow(){return new Date().toISOString()}
-function catalogRecordIdValid(id){return /^PC-(?:[2-9A-HJKMNP-TV-Z]{4}-){4}[2-9A-HJKMNP-TV-Z]{4}$/.test(String(id||''))}
+function catalogRecordIdValid(id){return /^PC-(?:[0-9A-HJKMNP-TV-Z]{4}-){4}[0-9A-HJKMNP-TV-Z]{4}$/.test(String(id||''))}
 function catalogNewRecordId(){
   const b=randomBytes(13),out=[];let bit=0;
   for(let i=0;i<20;i++){let v=0;for(let j=0;j<5;j++){const p=bit++;v=(v<<1)|((b[p>>3]>>(7-(p&7)))&1)}out.push(CROCKFORD[v])}
