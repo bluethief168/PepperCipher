@@ -314,7 +314,7 @@ const $=id=>document.getElementById(id);
 const state={busy:false,currentOp:null,calibration:null,files:{enc:null,dec:null},result:{encBlob:null,encName:'',decBlob:null,decName:'',previewUrl:null,selectedPreviewUrl:null},params:{text:null,fileEnc:null,fileDec:null},paper:{frames:[],setId:null,scan:{activeType:null,byType:{cipher:{setId:null,total:0,chunks:new Map()},params:{setId:null,total:0,chunks:new Map()},key:{setId:null,total:0,chunks:new Map()}}},lastDecodedImage:null},unsavedPlain:false};
 const catalogState={records:[],backend:'memory',db:null,ready:false,editId:null,loadPromise:null};
 const CATALOG_CFG=Object.freeze({DB_NAME:'PaperCipherCatalog',DB_VERSION:1,STORE:'records',STORAGE_KEY:'PaperCipherCatalog.v1',SCHEMA:1,MAX_RECORDS:10000,MAX_NAME:160,MAX_CATEGORY:80,MAX_NOTE:1000});
-const CROCKFORD='23456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CROCKFORD='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 
 // ========================= ERRORS =========================
