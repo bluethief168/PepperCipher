@@ -106,6 +106,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#teArgonTime').fill('2');
       await page.locator('#teArgonParallel').fill('1');
       const oldCipher = await page.locator('#teCipher').inputValue();
+      await page.evaluate(() => { window.__pcPctSamples = []; const el = document.querySelector('#tePct'); const observer = new MutationObserver(() => { if (el) window.__pcPctSamples.push(el.textContent || ''); }); observer.observe(el, { childList: true, characterData: true, subtree: true }); window.__pcPctObserver = observer; });
       await page.locator('#teEncrypt').click();
       await page.waitForFunction(() => {
         const progress = document.querySelector('#teProgress');
@@ -127,9 +128,11 @@ async function saveDownload(page, selector, path) {
       const liveProgress = await page.evaluate(() => ({
         percent: document.querySelector('#tePct')?.textContent || '',
         eta: document.querySelector('#teProgressEta')?.textContent || '',
-        elapsed: document.querySelector('#teProgressElapsed')?.textContent || ''
+        elapsed: document.querySelector('#teProgressElapsed')?.textContent || '',
+        samples: [...new Set(window.__pcPctSamples || [])].map(x => Number.parseFloat(x)).filter(Number.isFinite)
       }));
       assert.ok(Number.parseFloat(liveProgress.percent) > 0 && Number.parseFloat(liveProgress.percent) < 100);
+      assert.ok(liveProgress.samples.filter(x => x > 0 && x < 100).length >= 3, 'progress percentage should visibly animate between Argon2id slice checkpoints, not jump in 25% steps');
       assert.ok(liveProgress.eta && !liveProgress.eta.includes('正在建立实际速率'));
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 240000 });
       await waitForResult(page, '#teResult', 240000);
@@ -151,7 +154,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tdDecrypt').click();
       await waitForResult(page, '#tdResult', 240000);
       assert.equal(await page.locator('#tdPlain').inputValue(), 'PepperCipher browser audit\n中文 Unicode 🔐\nline 3');
-      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, immediateEta, livePercent: liveProgress.percent, liveEta: liveProgress.eta, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
+      return { progressElapsedBefore: elapsedBefore, progressElapsedAfter: elapsedAfter, immediateEta, livePercent: liveProgress.percent, liveEta: liveProgress.eta, animatedSamples: liveProgress.samples.length, roundTrip: true, packagePrefixes: ['Ciphertext.', 'Parliaments.', 'Key.'] };
     });
 
     let noPasswordPacks;
@@ -266,10 +269,14 @@ async function saveDownload(page, selector, path) {
         assert.equal(await page.locator('#prPrint').isDisabled(), false);
         assert.ok(await page.locator('#paperCodes .paper-card').count() >= 1, 'paper pages should be rendered for ' + kind);
       }
-      const safeText = await page.locator('#paperCodes .paper-safe-text').first().innerText();
-      assert.ok(safeText.length > 0, 'paper page must contain printable fallback text');
-      assert.doesNotMatch(safeText, /[ILOU]/, 'paper fallback data must exclude ambiguous I/L/O/U characters');
-      assert.doesNotMatch(safeText, /[ilou]/, 'paper fallback data must be uppercase and ambiguity-free');
+      const rawPackage = await page.locator('#prCipherSource').inputValue();
+      const paperText = await page.locator('#paperCodes .paper-package-text').first().textContent();
+      assert.equal(paperText, rawPackage, 'printed text must preserve the original package string exactly, without Base32 conversion or character substitutions');
+      const keyPayload = JSON.parse(Buffer.from(rawPackage.slice('Key.'.length), 'base64url').toString('utf8'));
+      const paperHeader = await page.locator('#paperCodes .paper-id').first().innerText();
+      assert.ok(keyPayload.recordId && paperHeader.includes(keyPayload.recordId), 'printed page must include the actual Record ID');
+      const paperPanelText = await page.locator('#panel-pr').innerText();
+      assert.doesNotMatch(paperPanelText, /PAPER2|PAPERPAR2|PAPERKEY2/, 'paper-recovery UI must use current Ciphertext / Parliaments / Key names');
       const paperCardCount = await page.locator('#paperCodes .paper-card').count();
       assert.ok(paperCardCount >= 1);
       await page.emulateMedia({media:'print'});
