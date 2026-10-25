@@ -314,7 +314,7 @@ const $=id=>document.getElementById(id);
 const state={busy:false,currentOp:null,calibration:null,files:{enc:null,dec:null},result:{encBlob:null,encName:'',decBlob:null,decName:'',previewUrl:null,selectedPreviewUrl:null},params:{text:null,fileEnc:null,fileDec:null},paper:{frames:[],setId:null,scan:{activeType:null,byType:{cipher:{setId:null,total:0,chunks:new Map()},params:{setId:null,total:0,chunks:new Map()},key:{setId:null,total:0,chunks:new Map()}}},lastDecodedImage:null},unsavedPlain:false};
 const catalogState={records:[],backend:'memory',db:null,ready:false,editId:null,loadPromise:null};
 const CATALOG_CFG=Object.freeze({DB_NAME:'PaperCipherCatalog',DB_VERSION:1,STORE:'records',STORAGE_KEY:'PaperCipherCatalog.v1',SCHEMA:1,MAX_RECORDS:10000,MAX_NAME:160,MAX_CATEGORY:80,MAX_NOTE:1000});
-const CROCKFORD='0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const CROCKFORD='ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
 
 // ========================= ERRORS =========================
@@ -340,8 +340,58 @@ function sanitizeFilename(name){let s=String(name||'recovered.bin').replace(/[\\
 function u32be(n){const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,n,false);return a}
 function writeU64(view,off,n){if(!Number.isSafeInteger(n)||n<0)throw new InvalidContainerError('文件大小超出安全整数范围。');const hi=Math.floor(n/4294967296),lo=n>>>0;view.setUint32(off,hi,false);view.setUint32(off+4,lo,false)}
 function readU64(view,off){const hi=view.getUint32(off,false),lo=view.getUint32(off+4,false);const n=hi*4294967296+lo;if(!Number.isSafeInteger(n))throw new InvalidContainerError('容器声明的文件大小超出当前浏览器安全范围。');return n}
-function b64urlEncode(bytes){let s='';const step=0x8000;for(let i=0;i<bytes.length;i+=step){const chunk=bytes.subarray(i,Math.min(i+step,bytes.length));let t='';for(let j=0;j<chunk.length;j++)t+=String.fromCharCode(chunk[j]);s+=t}const raw=btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');return raw.replace(/[01ILOUilou]/g,ch=>'~'+ch)}
-function b64urlDecode(s){if(typeof s!=='string')throw new InvalidContainerError('Base64URL 无效。');let rawText=String(s);if(rawText.includes('~')){let out='';for(let i=0;i<rawText.length;i++){const ch=rawText[i];if(ch==='~'){const next=rawText[++i];if(!next||!/[01ILOUilou]/.test(next))throw new InvalidContainerError('安全字符编码无效。');out+=next}else out+=ch}rawText=out}if(!/^[A-Za-z0-9_-]*$/.test(rawText))throw new InvalidContainerError('Base64URL 无效。');const pad=(4-rawText.length%4)%4;let raw;try{raw=atob(rawText.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat(pad))}catch(_){throw new InvalidContainerError('Base64URL 无效。')}const a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return a}
+// Human-safe Base64-like encoding for all human-facing identifiers.
+// Alphabet deliberately excludes 0, 1, I, L, O, U (upper/lower case).
+// It is a reversible radix-57 encoding of the byte stream; no post-generation
+// substitutions or escape characters are used.
+const HUMAN_SAFE_ALPHABET='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstvwxyz23456789-_';
+const HUMAN_SAFE_INDEX=Object.freeze(Object.fromEntries([...HUMAN_SAFE_ALPHABET].map((ch,i)=>[ch,i])));
+
+function humanSafeEncode(bytes){
+  if(!(bytes instanceof Uint8Array))bytes=new Uint8Array(bytes);
+  if(!bytes.length)return '';
+  let zeros=0;
+  while(zeros<bytes.length&&bytes[zeros]===0)zeros++;
+  let digits=[0];
+  for(let i=0;i<bytes.length;i++){
+    let carry=bytes[i];
+    for(let j=0;j<digits.length;j++){
+      const v=digits[j]*256+carry;
+      digits[j]=v%57;
+      carry=Math.floor(v/57);
+    }
+    while(carry){digits.push(carry%57);carry=Math.floor(carry/57)}
+  }
+  let out='';
+  for(let i=0;i<zeros;i++)out+=HUMAN_SAFE_ALPHABET[0];
+  for(let i=digits.length-1;i>=0;i--)out+=HUMAN_SAFE_ALPHABET[digits[i]];
+  return out;
+}
+
+function humanSafeDecode(s){
+  if(typeof s!=='string'||!s.length)return new Uint8Array(0);
+  for(const ch of s)if(HUMAN_SAFE_INDEX[ch]===undefined)throw new InvalidContainerError('安全字符编码无效。');
+  let leading=0;
+  while(leading<s.length&&s[leading]===HUMAN_SAFE_ALPHABET[0])leading++;
+  let bytes=[0];
+  for(let i=leading;i<s.length;i++){
+    let carry=HUMAN_SAFE_INDEX[s[i]];
+    for(let j=0;j<bytes.length;j++){
+      const v=bytes[j]*57+carry;
+      bytes[j]=v&255;
+      carry=Math.floor(v/256);
+    }
+    while(carry){bytes.push(carry&255);carry=Math.floor(carry/256)}
+  }
+  const out=new Uint8Array(leading+bytes.length);
+  for(let i=0;i<leading;i++)out[i]=0;
+  for(let i=0;i<bytes.length;i++)out[out.length-1-i]=bytes[i];
+  return out;
+}
+
+function b64urlEncode(bytes){return humanSafeEncode(bytes)}
+function b64urlDecode(s){return humanSafeDecode(s)}
+
 function copyText(text,secretLike){return new Promise(async(resolve,reject)=>{try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(text);toast(secretLike?'已复制。剪贴板可能被其他应用读取，请在使用后手动清除。':'已复制。','success');resolve();return}}catch(_){}const ta=document.createElement('textarea');ta.value=text;ta.setAttribute('readonly','');ta.style.position='fixed';ta.style.opacity='0';ta.style.pointerEvents='none';document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,ta.value.length);let ok=false;try{ok=document.execCommand('copy')}catch(_){}document.body.removeChild(ta);if(ok){toast(secretLike?'已复制。剪贴板可能被其他应用读取，请在使用后手动清除。':'已复制。','success');resolve()}else{toast('浏览器未授予剪贴板写入权限，请选中文本后手动复制。','error');reject(new Error('clipboard'))}})}
 function downloadBlob(blob,name){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=sanitizeFilename(name);a.rel='noopener';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1500)}
 function toast(msg,type){const d=document.createElement('div');d.className='toast'+(type?' '+type:'');d.textContent=msg;$('toastZone').appendChild(d);setTimeout(()=>{if(d.parentNode)d.parentNode.removeChild(d)},type==='error'?7000:3600)}
@@ -1695,11 +1745,10 @@ function pcSyncDecrypt(prefix,h){const no=h&&(h.kdf==='RANDOM-KEY'||h.kdfId===0)
 // It contains only human-facing metadata and Record IDs. No password, Secret K,
 // ciphertext, Salt, Nonce or KDF secret is stored here.
 function catalogNow(){return new Date().toISOString()}
-function catalogRecordIdValid(id){return /^PC-(?:[0-9A-HJKMNP-TV-Z]{4}-){4}[0-9A-HJKMNP-TV-Z]{4}$/.test(String(id||''))}
+function catalogRecordIdValid(id){return /^PC-(?:[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}-){4}[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{4}$/.test(String(id||''))}
 function catalogNewRecordId(){
-  const b=randomBytes(13),out=[];let bit=0;
-  for(let i=0;i<20;i++){let v=0;for(let j=0;j<5;j++){const p=bit++;v=(v<<1)|((b[p>>3]>>(7-(p&7)))&1)}out.push(CROCKFORD[v])}
-  const groups=out.join('').match(/.{1,4}/g);return 'PC-'+groups.join('-')
+  const raw=humanSafeEncode(randomBytes(13)).slice(0,20);
+  const groups=raw.match(/.{1,4}/g);return 'PC-'+groups.join('-')
 }
 function catalogCleanText(v,max){return String(v??'').trim().slice(0,max)}
 function catalogNormalizeRecord(r,{allowBlankName=false}={}){
@@ -2088,7 +2137,7 @@ function splitPostBootstrap(){
 }
 
 // ========================= VERSIONED HELP =========================
-const PEPPERCIPHER_VERSION='2026.10.25.34';
+const PEPPERCIPHER_VERSION='2026.10.25.35';
 function pepperDateCode(d=new Date()){return String(d.getFullYear()).slice(-2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
 function buildHelpHtml(){const v=PEPPERCIPHER_VERSION,date=pepperDateCode();return `<div class="help-doc"><h2>PepperCipher 使用帮助 · 版本 ${v}</h2><p class="sub">本帮助与当前网页程序版本同步生成。PepperCipher 是<strong>离线、本机运行</strong>的文本/文件加密工具；正常加密、解密、自检和纸质恢复均不需要网络。</p>
 <h3>一、第一次使用前必须知道的 6 件事</h3><ol>
