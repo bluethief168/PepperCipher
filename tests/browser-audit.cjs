@@ -132,7 +132,7 @@ async function saveDownload(page, selector, path) {
         samples: [...new Set(window.__pcPctSamples || [])].map(x => Number.parseFloat(x)).filter(Number.isFinite)
       }));
       assert.ok(Number.parseFloat(liveProgress.percent) > 0 && Number.parseFloat(liveProgress.percent) < 100);
-      assert.ok(liveProgress.samples.filter(x => x > 0 && x < 100).length >= 3, 'progress percentage should visibly animate between Argon2id slice checkpoints, not jump in 25% steps');
+      assert.ok(liveProgress.samples.filter(x => x > 0 && x < 100).length >= 3, 'progress percentage should visibly animate between Argon2id slice checkpoints, not jump in 25% steps'); assert.ok(liveProgress.samples.some(x => Math.abs((x / 25) - Math.round(x / 25)) > 0.01), 'progress samples must include a non-25%-multiple intermediate value');
       assert.ok(liveProgress.eta && !liveProgress.eta.includes('正在建立实际速率'));
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 240000 });
       await waitForResult(page, '#teResult', 240000);
