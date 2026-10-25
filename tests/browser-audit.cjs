@@ -139,6 +139,10 @@ async function saveDownload(page, selector, path) {
       await page.locator('#tePlain').fill('No-password mode audit: 不等于无密钥');
       await page.locator('#tePass').fill('');
       await page.locator('#tePass2').fill('');
+      // RAW-KEY mode must not depend on unused Argon2id parameters.
+      await page.locator('#teArgonMemory').fill('');
+      await page.locator('#teArgonTime').fill('');
+      await page.locator('#teArgonParallel').fill('');
       await page.locator('#teNoPassword').check();
       const oldCipher = await page.locator('#teCipher').inputValue();
       await page.locator('#teEncrypt').click();
@@ -157,6 +161,24 @@ async function saveDownload(page, selector, path) {
       await page.waitForFunction(expected => document.querySelector('#tdPlain')?.value===expected, 'No-password mode audit: 不等于无密钥', { timeout: 30000 });
       assert.equal(await page.locator('#tdPlain').inputValue(), 'No-password mode audit: 不等于无密钥');
       return { roundTrip: true };
+    });
+
+    await test('终止 Argon2id 会中止任务且不生成新密文', async () => {
+      await page.locator('#tab-te').click();
+      await page.locator('#teCatalogMode').selectOption('none');
+      const oldCipher = await page.locator('#teCipher').inputValue();
+      await page.locator('#tePlain').fill('this encryption must be cancelled');
+      await page.locator('#tePass').fill('Cancel-Audit-Password-2026!');
+      await page.locator('#tePass2').fill('Cancel-Audit-Password-2026!');
+      await page.locator('#teArgonMemory').fill('8192');
+      await page.locator('#teArgonTime').fill('8');
+      await page.locator('#teArgonParallel').fill('1');
+      await page.locator('#teEncrypt').click();
+      await page.waitForFunction(() => document.querySelector('#teProgress')?.classList.contains('show'), null, { timeout: 3000 });
+      await page.locator('#teArgonCancel').click();
+      await page.waitForFunction(() => !document.body.hasAttribute('aria-busy'), null, { timeout: 120000 });
+      assert.equal(await page.locator('#teCipher').inputValue(), oldCipher, 'cancelled operation must not replace ciphertext');
+      return { cancelled: true, ciphertextUnchanged: true };
     });
 
     await test('目录新增、持久化和 JSON 导出', async () => {
@@ -225,6 +247,36 @@ async function saveDownload(page, selector, path) {
       const restoredBytes = fs.readFileSync(restoredPath);
       assert.deepEqual(restoredBytes, original, 'decrypted file bytes must exactly match the original');
       return { originalBytes: original.length, encryptedBytes: encryptedBytes.length, restoredBytes: restoredBytes.length, encryptedFilename: encryptedDownload.suggestedFilename, restoredFilename: restoredDownload.suggestedFilename };
+    });
+
+    await test('无密码模式文件加解密不依赖 Argon2 参数', async () => {
+      const original = Buffer.from('RAW-KEY file audit: no Argon2 parameters required\\n中文', 'utf8');
+      await page.locator('#tab-fe').click();
+      await page.locator('#feAllTypes').check();
+      await page.locator('#feFile').setInputFiles({ name: 'audit-raw-key.txt', mimeType: 'text/plain', buffer: original });
+      await page.locator('#fePass').fill('');
+      await page.locator('#fePass2').fill('');
+      await page.locator('#feArgonMemory').fill('');
+      await page.locator('#feArgonTime').fill('');
+      await page.locator('#feArgonParallel').fill('');
+      await page.locator('#feNoPassword').check();
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#feEncrypt').click();
+      await waitForResult(page, '#feResult', 30000);
+      const encryptedPath = '/tmp/peppercipher-raw-key.paper';
+      const encryptedDownload = await saveDownload(page, '#feDownload', encryptedPath);
+      const encryptedBytes = fs.readFileSync(encryptedPath);
+
+      await page.locator('#tab-fd').click();
+      await page.locator('#fdFile').setInputFiles({ name: 'audit-raw-key.paper', mimeType: 'application/octet-stream', buffer: encryptedBytes });
+      await page.waitForTimeout(250);
+      assert.equal(await page.locator('#fdPass').isDisabled(), true, 'RAW-KEY container should not require a master password');
+      await page.locator('#fdDecrypt').click();
+      await waitForResult(page, '#fdResult', 30000);
+      const restoredPath = '/tmp/peppercipher-raw-key-restored.bin';
+      const restoredDownload = await saveDownload(page, '#fdDownload', restoredPath);
+      assert.deepEqual(fs.readFileSync(restoredPath), original);
+      return { roundTrip: true, encryptedFilename: encryptedDownload.suggestedFilename, restoredFilename: restoredDownload.suggestedFilename };
     });
 
     await test('主题切换与本机离线约束', async () => {
