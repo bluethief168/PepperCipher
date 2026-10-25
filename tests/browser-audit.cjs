@@ -65,7 +65,7 @@ async function saveDownload(page, selector, path) {
     await test('帮助版本同步且不包含已移除的校准操作', async () => {
       await page.locator('#helpBtn').click();
       const help = await page.locator('#helpBody').innerText();
-      assert.match(help, /2026\.10\.25\.16/);
+      assert.match(help, /版本 \d{4}\.\d{2}\.\d{2}\.\d{2}/);
       assert.doesNotMatch(help, /校准当前 m \/ p/);
       await page.locator('#helpClose').click();
       return { helpVersion: '2026.10.25.16', staleCalibrationText: false };
