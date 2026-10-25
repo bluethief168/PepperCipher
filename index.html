@@ -352,15 +352,15 @@ function humanSafeEncode(bytes){
   if(!bytes.length)return '';
   let zeros=0;
   while(zeros<bytes.length&&bytes[zeros]===0)zeros++;
-  let digits=[];
+  let digits=[0];
   for(let i=zeros;i<bytes.length;i++){
     let carry=bytes[i];
     for(let j=0;j<digits.length;j++){
       const v=digits[j]*256+carry;
-      digits[j]=v%57;
+      digits[j]=v%HUMAN_SAFE_ALPHABET.length;
       carry=Math.floor(v/57);
     }
-    while(carry){digits.push(carry%57);carry=Math.floor(carry/57)}
+    while(carry){digits.push(carry%HUMAN_SAFE_ALPHABET.length);carry=Math.floor(carry/HUMAN_SAFE_ALPHABET.length)}
   }
   let out='';
   for(let i=0;i<zeros;i++)out+=HUMAN_SAFE_ALPHABET[0];
@@ -378,7 +378,7 @@ function humanSafeDecode(s){
   for(let i=leading;i<s.length;i++){
     let carry=HUMAN_SAFE_INDEX[s[i]];
     for(let j=0;j<bytes.length;j++){
-      const v=bytes[j]*57+carry;
+      const v=bytes[j]*HUMAN_SAFE_ALPHABET.length+carry;
       bytes[j]=v&255;
       carry=Math.floor(v/256);
     }
@@ -2138,7 +2138,7 @@ function splitPostBootstrap(){
 }
 
 // ========================= VERSIONED HELP =========================
-const PEPPERCIPHER_VERSION='2026.10.25.36';
+const PEPPERCIPHER_VERSION='2026.10.25.37';
 function pepperDateCode(d=new Date()){return String(d.getFullYear()).slice(-2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')}
 function buildHelpHtml(){const v=PEPPERCIPHER_VERSION,date=pepperDateCode();return `<div class="help-doc"><h2>PepperCipher 使用帮助 · 版本 ${v}</h2><p class="sub">本帮助与当前网页程序版本同步生成。PepperCipher 是<strong>离线、本机运行</strong>的文本/文件加密工具；正常加密、解密、自检和纸质恢复均不需要网络。</p>
 <h3>一、第一次使用前必须知道的 6 件事</h3><ol>
