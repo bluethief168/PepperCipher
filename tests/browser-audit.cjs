@@ -66,10 +66,14 @@ async function saveDownload(page, selector, path) {
       await page.locator('#helpBtn').click();
       const help = await page.locator('#helpBody').innerText();
       const versionMatch = help.match(/版本 (\d{4}\.\d{2}\.\d{2}\.\d{2})/);
+      const footer = await page.locator('footer').innerText();
+      const footerVersionMatch = footer.match(/PepperCipher (\d{4}\.\d{2}\.\d{2}\.\d{2})/);
       assert.ok(versionMatch, 'help should display the current app version');
+      assert.ok(footerVersionMatch, 'footer should display the app version');
+      assert.equal(versionMatch[1], footerVersionMatch[1], 'help and footer versions must match');
       assert.doesNotMatch(help, /校准当前 m \/ p/);
       await page.locator('#helpClose').click();
-      return { helpVersion: versionMatch[1], staleCalibrationText: false };
+      return { helpVersion: versionMatch[1], footerVersion: footerVersionMatch[1], staleCalibrationText: false };
     });
 
     await test('内置加密与格式安全自检', async () => {
