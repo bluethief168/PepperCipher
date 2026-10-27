@@ -186,6 +186,12 @@ async function saveDownload(page, selector, path) {
       assert.ok(packs.params.startsWith('Parliaments.'));
       assert.ok(packs.key.startsWith('Key.'));
       assert.notEqual(packs.generationTime, '--');
+      const footerText = await page.locator('footer').innerText();
+      const footerVersion = footerText.match(/(\d{4}\.\d{2}\.\d{2}\.\d{2})/)?.[1];
+      assert.ok(footerVersion, 'footer version must be readable');
+      for (const [label, text, prefix] of [['cipher', packs.cipher, 'Ciphertext.'], ['params', packs.params, 'Parliaments.'], ['key', packs.key, 'Key.']]) {
+        assert.equal(parseHumanSafePackage(text, prefix).appVersion, footerVersion, label + ' package must carry the current appVersion');
+      }
       await page.locator('#tab-td').click();
       await page.locator('#tdCipher').fill(packs.cipher);
       await page.locator('#tdParams').fill(packs.params);
