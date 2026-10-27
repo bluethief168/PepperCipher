@@ -93,12 +93,14 @@ async function saveDownload(page, selector, path) {
       assert.ok(versionMatch, 'help should display the current app version');
       assert.ok(footerVersionMatch, 'footer should display the app version');
       assert.equal(versionMatch[1], footerVersionMatch[1], 'help and footer versions must match');
+      const topVersion = await page.locator('#topVersion').innerText();
+      assert.equal(topVersion, footerVersionMatch[1], 'top version badge must match footer version');
       assert.doesNotMatch(help, /校准当前 m \/ p/);
       await page.locator('#helpClose').click();
-      return { helpVersion: versionMatch[1], footerVersion: footerVersionMatch[1], staleCalibrationText: false };
+      return { helpVersion: versionMatch[1], footerVersion: footerVersionMatch[1], topVersion, staleCalibrationText: false };
     });
 
-    await test('源码版本号三处同步', async () => {
+    await test('源码版本号四处同步', async () => {
       const path = require('node:path');
       const candidates = ['index.html', path.join(__dirname, '..', 'index.html')];
       const sourcePath = candidates.find(p => fs.existsSync(p));
@@ -107,10 +109,12 @@ async function saveDownload(page, selector, path) {
       const footerStatic = source.match(/id="appVersion">(\d{4}\.\d{2}\.\d{2}\.\d{2})</)?.[1];
       const appVersion = source.match(/APP_VERSION:'(\d{4}\.\d{2}\.\d{2}\.\d{2})'/)?.[1];
       const pepperVersion = source.match(/PEPPERCIPHER_VERSION='(\d{4}\.\d{2}\.\d{2}\.\d{2})'/)?.[1];
-      assert.ok(footerStatic && appVersion && pepperVersion, 'footer, APP_VERSION and PEPPERCIPHER_VERSION must all exist in source');
+      const topStatic = source.match(/id="topVersion"[^>]*>(\d{4}\.\d{2}\.\d{2}\.\d{2})</)?.[1];
+      assert.ok(footerStatic && appVersion && pepperVersion && topStatic, 'footer, APP_VERSION, PEPPERCIPHER_VERSION and top badge must all exist in source');
       assert.equal(footerStatic, pepperVersion, 'static footer version must match PEPPERCIPHER_VERSION');
       assert.equal(appVersion, pepperVersion, 'APP_VERSION must match PEPPERCIPHER_VERSION');
-      return { footerStatic, appVersion, pepperVersion };
+      assert.equal(topStatic, pepperVersion, 'static top badge version must match PEPPERCIPHER_VERSION');
+      return { footerStatic, appVersion, pepperVersion, topStatic };
     });
 
     await test('内置加密与格式安全自检', async () => {
