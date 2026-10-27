@@ -20,6 +20,27 @@ async function test(name, fn) {
   }
 }
 
+const HUMAN_SAFE_ALPHABET = '234679ACDEFGHJKMNPQRTVWXYZ-_';
+const HUMAN_SAFE_INDEX = Object.fromEntries([...HUMAN_SAFE_ALPHABET].map((ch, i) => [ch, i]));
+function decodeHumanSafe(str) {
+  if (!str) return Buffer.alloc(0);
+  for (const ch of str) if (HUMAN_SAFE_INDEX[ch] === undefined) throw new Error('安全字符编码无效。');
+  let leading = 0;
+  while (leading < str.length && str[leading] === HUMAN_SAFE_ALPHABET[0]) leading++;
+  const bytes = [];
+  for (let i = leading; i < str.length; i++) {
+    let carry = HUMAN_SAFE_INDEX[str[i]];
+    for (let j = 0; j < bytes.length; j++) { const v = bytes[j] * HUMAN_SAFE_ALPHABET.length + carry; bytes[j] = v & 255; carry = Math.floor(v / 256); }
+    while (carry) { bytes.push(carry & 255); carry = Math.floor(carry / 256); }
+  }
+  const out = Buffer.alloc(leading + bytes.length);
+  for (let i = 0; i < bytes.length; i++) out[out.length - 1 - i] = bytes[i];
+  return out;
+}
+function parseHumanSafePackage(text, prefix) {
+  return JSON.parse(decodeHumanSafe(text.slice(prefix.length)).toString('utf8'));
+}
+
 async function waitForResult(page, selector, timeout = 120000) {
   await page.waitForFunction(sel => {
     const el = document.querySelector(sel);
@@ -75,6 +96,21 @@ async function saveDownload(page, selector, path) {
       assert.doesNotMatch(help, /校准当前 m \/ p/);
       await page.locator('#helpClose').click();
       return { helpVersion: versionMatch[1], footerVersion: footerVersionMatch[1], staleCalibrationText: false };
+    });
+
+    await test('源码版本号三处同步', async () => {
+      const path = require('node:path');
+      const candidates = ['index.html', path.join(__dirname, '..', 'index.html')];
+      const sourcePath = candidates.find(p => fs.existsSync(p));
+      assert.ok(sourcePath, 'index.html source must be readable for the version-sync check');
+      const source = fs.readFileSync(sourcePath, 'utf8');
+      const footerStatic = source.match(/id="appVersion">(\d{4}\.\d{2}\.\d{2}\.\d{2})</)?.[1];
+      const appVersion = source.match(/APP_VERSION:'(\d{4}\.\d{2}\.\d{2}\.\d{2})'/)?.[1];
+      const pepperVersion = source.match(/PEPPERCIPHER_VERSION='(\d{4}\.\d{2}\.\d{2}\.\d{2})'/)?.[1];
+      assert.ok(footerStatic && appVersion && pepperVersion, 'footer, APP_VERSION and PEPPERCIPHER_VERSION must all exist in source');
+      assert.equal(footerStatic, pepperVersion, 'static footer version must match PEPPERCIPHER_VERSION');
+      assert.equal(appVersion, pepperVersion, 'APP_VERSION must match PEPPERCIPHER_VERSION');
+      return { footerStatic, appVersion, pepperVersion };
     });
 
     await test('内置加密与格式安全自检', async () => {
@@ -218,7 +254,7 @@ async function saveDownload(page, selector, path) {
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 30000 });
       const params = await page.locator('#teParams').inputValue();
       assert.ok(params.startsWith('Parliaments.'));
-      const payload = JSON.parse(Buffer.from(params.slice('Parliaments.'.length), 'base64url').toString('utf8'));
+      const payload = parseHumanSafePackage(params, 'Parliaments.');
       assert.equal(payload.kdf, 'RAW-KEY', 'empty password should produce the no-password KDF package');
       const notices = await page.locator('.toast').allInnerTexts();
       assert.ok(notices.some(x => x.includes('主密码为空') && x.includes('无密码模式')));
@@ -273,7 +309,7 @@ async function saveDownload(page, selector, path) {
       const paperText = await page.locator('#paperCodes .paper-package-text').first().textContent();
       assert.notEqual(paperText, rawPackage, 'printed text must use the ambiguity-safe visual representation');
       assert.doesNotMatch(paperText, /[01ILOUilou]/, 'printed package text must contain no ambiguous 0/1/I/L/O/U glyphs');
-      const keyPayload = JSON.parse(Buffer.from(rawPackage.slice('Key.'.length), 'base64url').toString('utf8'));
+      const keyPayload = parseHumanSafePackage(rawPackage, 'Key.');
       const paperHeader = await page.locator('#paperCodes .paper-id').first().innerText();
       assert.ok(keyPayload.recordId && paperHeader.includes('记录编号'), 'printed page must include the Record ID field');
       const paperPanelText = await page.locator('#panel-pr').innerText();
