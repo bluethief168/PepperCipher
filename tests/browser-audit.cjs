@@ -311,7 +311,7 @@ async function saveDownload(page, selector, path) {
       assert.doesNotMatch(paperText, /[01ILOUilou]/, 'printed package text must contain no ambiguous 0/1/I/L/O/U glyphs');
       const keyPayload = parseHumanSafePackage(rawPackage, 'Key.');
       const paperHeader = await page.locator('#paperCodes .paper-id').first().innerText();
-      assert.ok(keyPayload.recordId && paperHeader.includes('记录编号'), 'printed page must include the Record ID field');
+      assert.ok(keyPayload.recordId && paperHeader.includes('Record ID'), 'printed page must include the Record ID field');
       const paperPanelText = await page.locator('#panel-pr').innerText();
       assert.doesNotMatch(paperPanelText, /PAPER2|PAPERPAR2|PAPERKEY2/, 'paper-recovery UI must use current Ciphertext / Parliaments / Key names');
       const paperCardCount = await page.locator('#paperCodes .paper-card').count();
