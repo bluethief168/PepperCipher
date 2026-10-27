@@ -183,9 +183,9 @@ async function saveDownload(page, selector, path) {
         key: document.querySelector('#teKey').value,
         generationTime: document.querySelector('#teGenerationTime strong').textContent
       }));
-      assert.ok(packs.cipher.startsWith('PepperCipher App Version: '));
-      assert.ok(packs.params.startsWith('PepperCipher App Version: '));
-      assert.ok(packs.key.startsWith('PepperCipher App Version: '));
+      assert.ok(packs.cipher.startsWith('APP version: '));
+      assert.ok(packs.params.startsWith('APP version: '));
+      assert.ok(packs.key.startsWith('APP version: '));
       assert.ok(packs.cipher.split('\n')[1].startsWith('Ciphertext.'));
       assert.ok(packs.params.split('\n')[1].startsWith('Parliaments.'));
       assert.ok(packs.key.split('\n')[1].startsWith('Key.'));
@@ -267,7 +267,7 @@ async function saveDownload(page, selector, path) {
       await page.locator('#teEncrypt').click();
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 30000 });
       const params = await page.locator('#teParams').inputValue();
-      assert.ok(params.startsWith('PepperCipher App Version: '));
+      assert.ok(params.startsWith('APP version: '));
       assert.ok(params.split('\n')[1].startsWith('Parliaments.'));
       const payload = parseHumanSafePackage(params, 'Parliaments.');
       assert.equal(payload.kdf, 'RAW-KEY', 'empty password should produce the no-password KDF package');
@@ -288,6 +288,7 @@ async function saveDownload(page, selector, path) {
       const dl = await saveDownload(page, '#catExportJson', dlPath);
       const json = JSON.parse(fs.readFileSync(dlPath, 'utf8'));
       assert.ok(json.records.some(r => r.name === 'Browser Audit Account'));
+      assert.ok(/^\d{4}\.\d{2}\.\d{2}\.\d{2}$/.test(json.appVersion), 'catalog JSON must carry appVersion');
       for (const record of json.records) {
         assert.equal(Object.prototype.hasOwnProperty.call(record, 'password'), false);
         assert.equal(Object.prototype.hasOwnProperty.call(record, 'secret'), false);
@@ -327,6 +328,8 @@ async function saveDownload(page, selector, path) {
       const keyPayload = parseHumanSafePackage(rawPackage, 'Key.');
       const paperHeader = await page.locator('#paperCodes .paper-id').first().innerText();
       assert.ok(keyPayload.recordId && paperHeader.includes('Record ID'), 'printed page must include the Record ID field');
+      const paperTitle = await page.locator('#paperCodes .paper-head strong').first().innerText();
+      assert.ok(paperTitle.includes('APP version'), 'printed page title must include the APP version');
       const paperPanelText = await page.locator('#panel-pr').innerText();
       assert.doesNotMatch(paperPanelText, /PAPER2|PAPERPAR2|PAPERKEY2/, 'paper-recovery UI must use current Ciphertext / Parliaments / Key names');
       const paperCardCount = await page.locator('#paperCodes .paper-card').count();
