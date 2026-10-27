@@ -38,7 +38,8 @@ function decodeHumanSafe(str) {
   return out;
 }
 function parseHumanSafePackage(text, prefix) {
-  return JSON.parse(decodeHumanSafe(text.slice(prefix.length)).toString('utf8'));
+  const line = String(text).split(/\r?\n/).map(x => x.trim()).find(x => x.startsWith(prefix)) || String(text).trim();
+  return JSON.parse(decodeHumanSafe(line.slice(prefix.length)).toString('utf8'));
 }
 
 async function waitForResult(page, selector, timeout = 120000) {
@@ -182,9 +183,12 @@ async function saveDownload(page, selector, path) {
         key: document.querySelector('#teKey').value,
         generationTime: document.querySelector('#teGenerationTime strong').textContent
       }));
-      assert.ok(packs.cipher.startsWith('Ciphertext.'));
-      assert.ok(packs.params.startsWith('Parliaments.'));
-      assert.ok(packs.key.startsWith('Key.'));
+      assert.ok(packs.cipher.startsWith('PepperCipher App Version: '));
+      assert.ok(packs.params.startsWith('PepperCipher App Version: '));
+      assert.ok(packs.key.startsWith('PepperCipher App Version: '));
+      assert.ok(packs.cipher.split('\n')[1].startsWith('Ciphertext.'));
+      assert.ok(packs.params.split('\n')[1].startsWith('Parliaments.'));
+      assert.ok(packs.key.split('\n')[1].startsWith('Key.'));
       assert.notEqual(packs.generationTime, '--');
       const footerText = await page.locator('footer').innerText();
       const footerVersion = footerText.match(/(\d{4}\.\d{2}\.\d{2}\.\d{2})/)?.[1];
@@ -263,7 +267,8 @@ async function saveDownload(page, selector, path) {
       await page.locator('#teEncrypt').click();
       await page.waitForFunction(prev => { const v=document.querySelector('#teCipher')?.value||''; return v && v!==prev; }, oldCipher, { timeout: 30000 });
       const params = await page.locator('#teParams').inputValue();
-      assert.ok(params.startsWith('Parliaments.'));
+      assert.ok(params.startsWith('PepperCipher App Version: '));
+      assert.ok(params.split('\n')[1].startsWith('Parliaments.'));
       const payload = parseHumanSafePackage(params, 'Parliaments.');
       assert.equal(payload.kdf, 'RAW-KEY', 'empty password should produce the no-password KDF package');
       const notices = await page.locator('.toast').allInnerTexts();
